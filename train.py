@@ -17,11 +17,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kernels import get_kernel
 cap = torch.cuda.get_device_capability()
-# varunneal's FA3 is Hopper only, use kernels-community on non-Hopper GPUs
-repo = "varunneal/flash-attention-3" if cap == (9, 0) else "kernels-community/flash-attn3"
-fa3 = get_kernel(repo).flash_attn_interface
+# FA3 kernels only available for Hopper (sm_90) and Ada (sm_89)
+if cap[0] <= 9:
+    from kernels import get_kernel
+    repo = "varunneal/flash-attention-3" if cap == (9, 0) else "kernels-community/flash-attn3"
+    fa3 = get_kernel(repo).flash_attn_interface
+    USE_FA3 = True
+else:
+    fa3 = None
+    USE_FA3 = False
+    print(f"Flash Attention 3 unavailable for sm_{cap[0]}{cap[1]}, using PyTorch SDPA")
 
 from prepare import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, make_dataloader, evaluate_bpb
 
@@ -90,7 +96,14 @@ class CausalSelfAttention(nn.Module):
         q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
         q, k = norm(q), norm(k)
 
-        y = fa3.flash_attn_func(q, k, v, causal=True, window_size=window_size)
+        if USE_FA3:
+            y = fa3.flash_attn_func(q, k, v, causal=True, window_size=window_size)
+        else:
+            # PyTorch SDPA: (B, T, H, D) -> (B, H, T, D) -> SDPA -> (B, T, H, D)
+            y = F.scaled_dot_product_attention(
+                q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2),
+                is_causal=True,
+            ).transpose(1, 2)
         y = y.contiguous().view(B, T, -1)
         y = self.c_proj(y)
         return y
@@ -448,7 +461,7 @@ FINAL_LR_FRAC = 0.0     # final LR as fraction of initial
 
 # Model size
 DEPTH = 8               # number of transformer layers
-DEVICE_BATCH_SIZE = 128  # per-device batch size (reduce if OOM)
+DEVICE_BATCH_SIZE = 16    # per-device batch size (reduced for 8GB VRAM)
 
 # ---------------------------------------------------------------------------
 # Setup: tokenizer, model, optimizer, dataloader

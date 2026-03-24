@@ -1,4 +1,6 @@
-# autoresearch
+# autoresearch (on RTX 5060 Laptop, 8GB VRAM)
+
+Fork of [karpathy/autoresearch](https://github.com/karpathy/autoresearch).
 
 ![teaser](progress.png)
 
@@ -79,6 +81,10 @@ Seeing as there seems to be a lot of interest in tinkering with autoresearch on 
 7. You'll want to lower `TOTAL_BATCH_SIZE` a lot, but keep it powers of 2, e.g. down to `2**14` (~16K) or so even, hard to tell.
 
 I think these would be the reasonable hyperparameters to play with. Ask your favorite coding agent for help and copy paste them this guide, as well as the full source code.
+
+## Local setup (RTX 5060 Laptop, 8GB VRAM)
+
+This fork has been adapted to run on an NVIDIA RTX 5060 Laptop GPU (8GB VRAM) with an AMD Ryzen AI 9 HX 370 CPU. Flash Attention 3 is replaced by a PyTorch SDPA fallback (FA3 only supports Hopper/Ada), and `DEVICE_BATCH_SIZE` is reduced to 16 to fit in VRAM. With this config, training achieves ~78k tok/s and completes in ~10 minutes per run using ~6.5 GB of the 8 GB available.
 
 ## Notable forks
 
